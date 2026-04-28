@@ -232,7 +232,7 @@ python workloads/gateway_probe.py --topic ap.orders --group cg-ap --seconds 60 -
 
 Expected result: the JSON report shows records produced and consumed with no errors. A perfect run looks like duplicates `0` and missing `0`.
 
-### Step 8: Run The Live Customer Demo Probe
+### Step 8: Run The Live Failover Probe
 
 For a live failover demo, keep a continuous workload running while you perform the failover in another terminal:
 
@@ -246,7 +246,7 @@ The probe prints one line per second:
 elapsed | attempted | acked | consumed | lag | missing | dupes | prod_err | cons_err | foreign
 ```
 
-Use this during a customer demo to show how many records were acknowledged, consumed, duplicated, or missing during the cutover window.
+Use this to show how many records were acknowledged, consumed, duplicated, or missing during the cutover window.
 
 ## Step By Step: Terraform Path
 
@@ -402,7 +402,7 @@ terraform destroy
 | `README.md` | Main step-by-step lab guide. |
 | `docs/answers.md` | Answers to the Gateway and Cluster Linking questions with example results. |
 | `docs/compatibility.md` | Operating system, tool, and cluster support matrix. |
-| `docs/customer-demo.md` | Live customer demo runbook and topic-routing explanation. |
+| `docs/test-plan.md` | Reproducible tests mapped to the original evaluation questions. |
 | `docs/terraform.md` | Terraform setup guide and warnings. |
 | `scripts/` | Bash automation for the script path and local Gateway runtime. |
 | `terraform/` | Optional Terraform infrastructure-as-code path. |
