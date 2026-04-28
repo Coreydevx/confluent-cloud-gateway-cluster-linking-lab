@@ -232,6 +232,22 @@ python workloads/gateway_probe.py --topic ap.orders --group cg-ap --seconds 60 -
 
 Expected result: the JSON report shows records produced and consumed with no errors. A perfect run looks like duplicates `0` and missing `0`.
 
+### Step 8: Run The Live Customer Demo Probe
+
+For a live failover demo, keep a continuous workload running while you perform the failover in another terminal:
+
+```bash
+python workloads/live_failover_probe.py --topic ap.orders --group cg-live-failover --rate 10
+```
+
+The probe prints one line per second:
+
+```text
+elapsed | attempted | acked | consumed | lag | missing | dupes | prod_err | cons_err | foreign
+```
+
+Use this during a customer demo to show how many records were acknowledged, consumed, duplicated, or missing during the cutover window.
+
 ## Step By Step: Terraform Path
 
 Terraform creates the Confluent Cloud resources, then the existing scripts start Gateway and run the workload.
@@ -295,7 +311,17 @@ Client properties are generated at `.generated/gateway/client.properties`.
 
 The active/passive path mirrors `ap.orders` from east to west using `gateway-lab-ap`.
 
-When west mirror lag is `0`, fail over the mirror topic:
+For a clean failover with the lowest reprocessing/loss risk:
+
+1. Pause or fence producers.
+2. Wait for west mirror lag to reach `0`.
+3. Fail over the mirror topic.
+4. Switch Gateway to west.
+5. Resume producers.
+
+For a real-workload demo, keep `live_failover_probe.py` running while you perform the steps below. If writes continue after the mirror cutoff but before Gateway moves to west, those records can be accepted by east and not appear on west. That is the RPO/cutoff behavior this lab is meant to expose.
+
+When west mirror lag is acceptable, fail over the mirror topic:
 
 ```bash
 . .lab.env
@@ -304,11 +330,13 @@ confluent kafka mirror failover ap.orders --cluster "$WEST_CLUSTER_ID" --link ga
 ./scripts/06_switch_route.sh west
 ```
 
-Run the probe again against the same client bootstrap:
+Run the one-shot probe again against the same client bootstrap:
 
 ```bash
 python workloads/gateway_probe.py --topic ap.orders --group cg-ap --seconds 60 --rate 10
 ```
+
+Or continue watching the live probe. The client bootstrap remains `localhost:19092`; only the Gateway route changes.
 
 ## Active/Active
 
@@ -374,10 +402,12 @@ terraform destroy
 | `README.md` | Main step-by-step lab guide. |
 | `docs/answers.md` | Answers to the Gateway and Cluster Linking questions with example results. |
 | `docs/compatibility.md` | Operating system, tool, and cluster support matrix. |
+| `docs/customer-demo.md` | Live customer demo runbook and topic-routing explanation. |
 | `docs/terraform.md` | Terraform setup guide and warnings. |
 | `scripts/` | Bash automation for the script path and local Gateway runtime. |
 | `terraform/` | Optional Terraform infrastructure-as-code path. |
-| `workloads/gateway_probe.py` | Small producer/consumer workload used to test routing and failover. |
+| `workloads/gateway_probe.py` | One-shot producer/consumer workload used to test routing and failover. |
+| `workloads/live_failover_probe.py` | Continuous producer/consumer workload for live failover demos. |
 
 ## Generated Files
 

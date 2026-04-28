@@ -1,8 +1,8 @@
-.PHONY: check create-clusters wait auth links gateway-east gateway-west deps probe clean-local terraform-check
+.PHONY: check create-clusters wait auth links gateway-east gateway-west deps probe live-probe clean-local terraform-check
 
 check:
 	bash -n scripts/*.sh
-	python3 -m py_compile workloads/gateway_probe.py
+	python3 -m py_compile workloads/*.py
 
 terraform-check:
 	terraform -chdir=terraform fmt -check
@@ -32,6 +32,9 @@ deps:
 
 probe:
 	. .venv/bin/activate && python workloads/gateway_probe.py --topic ap.orders --group cg-ap --seconds 60 --rate 10
+
+live-probe:
+	. .venv/bin/activate && python workloads/live_failover_probe.py --topic ap.orders --group cg-live-failover --rate 10
 
 clean-local:
 	if [ -f .generated/gateway/docker-compose.yaml ]; then docker compose -f .generated/gateway/docker-compose.yaml --project-directory .generated/gateway down -v; fi
