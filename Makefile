@@ -1,8 +1,12 @@
-.PHONY: check create-clusters wait auth links gateway-east gateway-west deps probe clean-local
+.PHONY: check create-clusters wait auth links gateway-east gateway-west deps probe clean-local terraform-check
 
 check:
 	bash -n scripts/*.sh
 	python3 -m py_compile workloads/gateway_probe.py
+
+terraform-check:
+	terraform -chdir=terraform fmt -check
+	terraform -chdir=terraform validate
 
 create-clusters:
 	./scripts/00_create_clusters.sh
@@ -31,4 +35,3 @@ probe:
 
 clean-local:
 	if [ -f .generated/gateway/docker-compose.yaml ]; then docker compose -f .generated/gateway/docker-compose.yaml --project-directory .generated/gateway down -v; fi
-

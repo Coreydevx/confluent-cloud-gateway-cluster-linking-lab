@@ -1,0 +1,19 @@
+# Copy this file to terraform.tfvars and edit the environment ID.
+# Do not put Cloud API secrets in this file unless you understand the state-file risk.
+# Prefer:
+#   export TF_VAR_confluent_cloud_api_key="..."
+#   export TF_VAR_confluent_cloud_api_secret="..."
+
+environment_id = "env-abc123"
+
+lab_tag        = "tf-demo"
+cloud          = "AWS"
+east_region    = "us-east-1"
+west_region    = "us-west-2"
+availability   = "SINGLE_ZONE"
+dedicated_cku  = 1
+topic_partitions = 6
+
+gateway_client_user     = "labclient"
+gateway_client_password = "lab-password"
+

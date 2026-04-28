@@ -92,38 +92,85 @@ flowchart TD
 
 ## Prerequisites
 
-- A Confluent Cloud account with permission to create Kafka clusters, service accounts, API keys, ACLs, and Cluster Links.
-- Two Kafka clusters that support Cluster Linking as destinations. The scripts create two single-zone Dedicated clusters by default, which incur Confluent Cloud charges while they exist.
-- Confluent CLI v4 or newer, authenticated with `confluent login`.
+- A Confluent Cloud account with permission to create clusters, service accounts, API keys, ACLs, topics, Cluster Links, and mirror topics.
 - Docker Desktop or Docker Engine with Compose v2.
+- Confluent CLI v4 or newer.
 - `jq`.
 - Python 3.10 or newer.
-- macOS or Linux shell.
+- Bash shell.
+- Terraform 1.6 or newer, only if you choose the Terraform path.
 
-## Quick Start
+This lab is not Mac-only. It is tested on macOS, expected to work on Linux, and supported on Windows through WSL2. Native Windows PowerShell is not supported by the Bash scripts. See [docs/compatibility.md](docs/compatibility.md) for the full matrix.
 
-Clone the repo and enter it:
+## Choose Your Path
 
-```bash
-git clone https://github.com/<owner>/confluent-cloud-gateway-cluster-linking-lab.git
-cd confluent-cloud-gateway-cluster-linking-lab
-```
+You have two supported ways to create the Confluent Cloud resources:
 
-Choose a Confluent Cloud environment:
+| Path | Best for | What it does |
+| --- | --- | --- |
+| Bash scripts | Learning the moving parts step by step | Uses the Confluent CLI to create clusters, auth, topics, links, and mirrors. |
+| Terraform | Repeatable infrastructure as code | Uses Terraform to create the Confluent Cloud resources, then exports files for the Gateway scripts. |
 
-```bash
-confluent environment list
-export ENVIRONMENT_ID=env-abc123
-```
+If you are new to this, use the Bash script path first. It is easier to see what each step does. Use Terraform after you understand the flow or when you want a repeatable lab.
 
-Create two lab clusters:
+## Before You Start
+
+1. Install the tools in [Prerequisites](#prerequisites).
+2. Log in to Confluent Cloud:
+
+   ```bash
+   confluent login
+   ```
+
+3. Confirm Docker is running:
+
+   ```bash
+   docker compose version
+   ```
+
+4. Clone the repo:
+
+   ```bash
+   git clone https://github.com/Coreydevx/confluent-cloud-gateway-cluster-linking-lab.git
+   cd confluent-cloud-gateway-cluster-linking-lab
+   ```
+
+5. Choose a Confluent Cloud environment:
+
+   ```bash
+   confluent environment list
+   export ENVIRONMENT_ID=env-abc123
+   ```
+
+Replace `env-abc123` with your environment ID.
+
+Important: the default lab creates two Dedicated clusters. They incur Confluent Cloud charges while they exist. Run cleanup when you are done.
+
+## Step By Step: Bash Script Path
+
+### Step 1: Create Clusters
+
+Run:
 
 ```bash
 ./scripts/00_create_clusters.sh
+```
+
+Expected result: the script writes `.lab.env` with the new east and west cluster IDs.
+
+### Step 2: Wait For Clusters
+
+Dedicated clusters can take a while to become ready.
+
+```bash
 ./scripts/01_wait_for_clusters.sh
 ```
 
-Or use existing supported clusters by writing `.lab.env` yourself:
+Expected result: `.lab.env` is updated with each cluster bootstrap endpoint.
+
+### Step 2 Alternative: Use Existing Clusters
+
+If you already have two supported clusters, create `.lab.env` manually:
 
 ```bash
 cat > .lab.env <<'EOF'
@@ -137,27 +184,100 @@ EOF
 ./scripts/01_wait_for_clusters.sh
 ```
 
-Provision lab identities, topics, Cluster Links, and mirrors:
+### Step 3: Create Lab Auth
 
 ```bash
 ./scripts/02_provision_auth.sh
+```
+
+Expected result: service accounts and API keys are created. Secrets are written to `.secrets/gateway.env`, which is ignored by git.
+
+### Step 4: Create Topics, Cluster Links, And Mirrors
+
+```bash
 ./scripts/03_topics_and_links.sh
 ```
 
-Render and start Gateway with the stable route initially pointing at east:
+Expected result:
+
+- `ap.orders` exists on east and is mirrored to west.
+- `aa.orders` exists on both clusters.
+- `east.aa.orders` exists on west.
+- `west.aa.orders` exists on east.
+
+### Step 5: Start Gateway Pointing To East
 
 ```bash
 ./scripts/04_render_gateway.sh east
 ./scripts/05_start_gateway.sh
 ```
 
-Install the workload dependency and run a basic probe through Gateway:
+Expected result: Docker starts two local containers:
+
+- `gateway-lab`
+- `gateway-lab-vault`
+
+### Step 6: Install The Python Client
 
 ```bash
 ./scripts/install_python_deps.sh
 . .venv/bin/activate
+```
+
+### Step 7: Run A Workload Through Gateway
+
+```bash
 python workloads/gateway_probe.py --topic ap.orders --group cg-ap --seconds 60 --rate 10
 ```
+
+Expected result: the JSON report shows records produced and consumed with no errors. A perfect run looks like duplicates `0` and missing `0`.
+
+## Step By Step: Terraform Path
+
+Terraform creates the Confluent Cloud resources, then the existing scripts start Gateway and run the workload.
+
+Start here:
+
+```bash
+cd terraform
+cp terraform.tfvars.example terraform.tfvars
+```
+
+Edit `terraform.tfvars` and set your `environment_id`.
+
+Set Cloud API credentials in your shell:
+
+```bash
+export TF_VAR_confluent_cloud_api_key="YOUR_CLOUD_API_KEY"
+export TF_VAR_confluent_cloud_api_secret="YOUR_CLOUD_API_SECRET"
+```
+
+Run Terraform:
+
+```bash
+terraform init
+terraform plan -out tfplan
+terraform apply tfplan
+```
+
+Return to the repo root and export the files used by Gateway:
+
+```bash
+cd ..
+./scripts/export_terraform_outputs.sh
+```
+
+Then continue with Gateway:
+
+```bash
+./scripts/04_render_gateway.sh east
+./scripts/05_start_gateway.sh
+./scripts/install_python_deps.sh
+. .venv/bin/activate
+python workloads/gateway_probe.py --topic ap.orders --group cg-ap --seconds 60 --rate 10
+```
+
+Detailed Terraform instructions are in [docs/terraform.md](docs/terraform.md).
 
 ## Routes
 
@@ -226,13 +346,38 @@ Short version:
 
 ## Cleanup
 
-This removes local containers and deletes the two cluster IDs in `.lab.env`:
+If you used the Bash path, this removes local containers and deletes the two cluster IDs in `.lab.env`:
 
 ```bash
 ./scripts/99_teardown.sh
 ```
 
 The script asks you to type `DELETE` before deleting cloud clusters.
+
+If you used Terraform, stop local containers first:
+
+```bash
+make clean-local
+```
+
+Then destroy the Terraform-managed cloud resources:
+
+```bash
+cd terraform
+terraform destroy
+```
+
+## Repo Guide
+
+| File or folder | Purpose |
+| --- | --- |
+| `README.md` | Main step-by-step lab guide. |
+| `docs/answers.md` | Answers to the Gateway and Cluster Linking questions with example results. |
+| `docs/compatibility.md` | Operating system, tool, and cluster support matrix. |
+| `docs/terraform.md` | Terraform setup guide and warnings. |
+| `scripts/` | Bash automation for the script path and local Gateway runtime. |
+| `terraform/` | Optional Terraform infrastructure-as-code path. |
+| `workloads/gateway_probe.py` | Small producer/consumer workload used to test routing and failover. |
 
 ## Generated Files
 
@@ -242,6 +387,9 @@ These paths are intentionally ignored by git:
 - `.secrets/`
 - `.generated/`
 - `.venv/`
+- `.terraform/`
+- `terraform.tfstate`
+- `terraform.tfvars`
 
 Do not commit API keys, secrets, generated Gateway configs, or local virtual environments.
 
